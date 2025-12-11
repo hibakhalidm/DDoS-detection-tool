@@ -1,0 +1,21 @@
+# requirements.txt
+
+# Packet capturing and network analysis
+scapy               # For packet capturing and manipulation
+
+# Data manipulation and processing
+pandas              # For data processing and analysis
+numpy               # For numerical operations
+
+# Machine Learning
+scikit-learn        # For machine learning algorithms
+joblib              # For saving/loading trained models
+
+# Visualization
+matplotlib          # For plotting and visualizing data
+
+# Logging
+logzero             # For enhanced logging (optional)
+
+# Additional utilities
+datetime            # Built-in; no installation required
