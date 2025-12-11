@@ -38,9 +38,22 @@ pip install -r requirements.txt
     ```
 
 ## Usage
-1. Run the main Python script:
-    ```bash
-    python src/main.py
-    ```
 
+### Quick Start: Detect and Simulate
 
+1. **Start the Detector**
+     - Open a terminal and run:
+         ```bash
+         python -m src.main --calibration_time 10 --sniff_time 2
+         ```
+     - Calibrates for 10 seconds to establish a baseline, then switches to Real-Time Monitor mode.
+     - View the live graph at `data/anomalies/live_monitor.png` (updates every 2 seconds).
+
+2. **Simulate an Attack**
+     - Open a second terminal (admin/sudo may be required for Scapy):
+         ```bash
+         python attacker.py --target_ip 127.0.0.1 --count 1000
+         ```
+     - Sends 1000 SYN packets to localhost.
+     - Watch the detector terminal for messages like `Anomalies detected: [...]`.
+     - The live graph should show a spike in packet volume.
