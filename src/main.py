@@ -3,6 +3,7 @@ import argparse
 import logging
 import time
 import pandas as pd
+from datetime import datetime, timedelta
 from src.capture.packet_sniffer import start_sniffing, get_and_clear_captured_data
 from src.detection.ml_detection import AnomalyDetector
 from src.filtering.ip_filter import check_and_filter_ip
@@ -23,6 +24,10 @@ def main(sniff_time, calibration_time):
     # Initialize Detector
     detector = AnomalyDetector()
     
+    # Initialize Rolling History (for visualization)
+    # Columns: timestamp, packet_count, anomalies_detected
+    history_df = pd.DataFrame(columns=['timestamp', 'packet_count'])
+    
     # Phase 1: Calibration
     print(f"Calibrating baseline traffic ({calibration_time} seconds)...")
     logging.info("Starting calibration phase...")
@@ -31,6 +36,9 @@ def main(sniff_time, calibration_time):
     
     if baseline_data.empty:
         logging.warning("No traffic captured during calibration. Training on empty data may fail/skip.")
+    else:
+        # Pre-populate history with baseline? Optional.
+        pass
     
     # Train the baseline
     detector.train_baseline(baseline_data)
@@ -47,14 +55,27 @@ def main(sniff_time, calibration_time):
             
             # Get data
             batch_data = get_and_clear_captured_data()
+            current_time = datetime.now()
+            
+            # Update History
+            batch_count = len(batch_data)
+            new_row = pd.DataFrame([{'timestamp': current_time, 'packet_count': batch_count}])
+            history_df = pd.concat([history_df, new_row], ignore_index=True)
+            
+            # Keep only last 60 seconds (approx)
+            # Since we sniff in windows, we can just keep last N records or filter by time
+            cutoff_time = current_time - timedelta(seconds=60)
+            history_df = history_df[history_df['timestamp'] > cutoff_time]
             
             if batch_data.empty:
-                # Still visualize empty state or just continue?
-                # Continue prevents cluttering logs, but visualization might need update.
+                # Still visualize the history even if current batch is empty
+                try:
+                    visualize_data(data_frame=history_df)
+                except Exception as e:
+                    logging.error(f"Error during visualization (empty batch): {e}")
                 continue
 
             # Detect anomalies
-            # Note: We need to handle potential errors if data is malformed, ensuring robustness
             try:
                 anomalous_ips = detector.detect_anomalies(batch_data)
             except Exception as e:
@@ -71,13 +92,11 @@ def main(sniff_time, calibration_time):
                     pkt_count = batch_data[batch_data['src_ip'] == ip].shape[0]
                     check_and_filter_ip(ip, packet_count=pkt_count)
 
-            # Update Visualization
+            # Update Visualization with History
             try:
-                visualize_data(data_frame=batch_data)
+                visualize_data(data_frame=history_df)
             except Exception as e:
                 logging.error(f"Error during visualization: {e}")
-
-            # Optional: Short sleep to prevent tight loop if sniffing is very fast (though sniff timeout handles it)
             
     except KeyboardInterrupt:
         print("\nStopping detection system...")

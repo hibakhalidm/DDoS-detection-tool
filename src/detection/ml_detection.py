@@ -55,11 +55,25 @@ class AnomalyDetector:
         Aggregates data by src_ip and calculates features:
         - packet_count (volume)
         - avg_pkt_size
-        - syn_ratio (if 'flags' or 'is_syn' available)
+        - syn_ratio (ratio of SYN-only packets)
         """
         # Ensure appropriate columns exist
         if 'src_ip' not in data.columns:
             return pd.DataFrame()
+
+        # Helper to check for SYN-only packets (SYN set, ACK not set)
+        # Scapy flags are often objects, so convert to string. 
+        # 'S' is SYN, 'A' is ACK.
+        # We want packets where 'S' in flags AND 'A' not in flags.
+        def is_syn_only(flags):
+            f_str = str(flags)
+            return 'S' in f_str and 'A' not in f_str
+
+        # Add is_syn_only column if flags exist
+        if 'flags' in data.columns:
+            data['is_syn_only'] = data['flags'].apply(is_syn_only).astype(int)
+        else:
+            data['is_syn_only'] = 0
 
         # Group by Source IP to get per-IP stats
         grouped = data.groupby('src_ip')
@@ -72,20 +86,11 @@ class AnomalyDetector:
         else:
             features['avg_pkt_size'] = 0
 
-        # Calculate SYN ratio if possible
-        if 'is_syn' in data.columns:
-            features['syn_ratio'] = grouped['is_syn'].mean()
-        elif 'flags' in data.columns:
-             # Basic check for 'S' in flags if it's a string representation
-             # This depends on how flags are stored. 
-             # Assuming 'is_syn' is already preprocessed would be safer if that's what main.py provides,
-             # but let's try to handle raw flags if is_syn is missing.
-             # For now, we will assume is_syn is preferred as per previous code.
-             features['syn_ratio'] = 0
-        else:
-             features['syn_ratio'] = 0
+        # Calculate SYN ratio
+        # Sum of is_syn_only / Count
+        features['syn_ratio'] = grouped['is_syn_only'].sum() / grouped.size()
 
-        # Handle NaN values if any
+        # Handle NaN values if any (e.g. if division by zero could happen, though groupby size > 0)
         features.fillna(0, inplace=True)
         
         return features

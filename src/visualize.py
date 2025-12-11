@@ -26,40 +26,33 @@ def visualize_data(file_path="data/processed/anomaly_detected.csv",
         if 'timestamp' in data.columns:
             data['timestamp'] = pd.to_datetime(data['timestamp'])
         else:
-             # Create a dummy timestamp if missing for visualization
-             data['timestamp'] = pd.date_range(start='2021-01-01', periods=len(data), freq='S')
+             data['timestamp'] = pd.to_datetime('now')
 
-        # Create aggregate stats for text summary
-        print("\n--- Live Monitor Summary ---")
-        if 'src_ip' in data.columns:
-             top_ips = data['src_ip'].value_counts().head(5)
-             print("Top 5 Source IPs by Packet Volume:")
-             print(top_ips)
-        
         # Create figure and axis
         fig, ax = plt.subplots(figsize=(10, 5))
 
-        # We want to plot packet size over time, or just packet counts per IP?
-        # The prompt says "save the plot... e.g. Top 5 IPs by Packet Rate".
-        # Let's adjust the plot to be more useful for DDoS monitoring.
-        # Maybe a time series of packet counts?
-        
-        # For now, let's keep the time series of packet size and highlight anomalies if we have that info.
-        # But since we are moving to aggregation by IP, the 'anomaly' column might be on the IP level, 
-        # or we might have per-packet anomalies (passed from main.py if we merge it back).
-        
-        # If we have 'is_syn' or 'pkt_size', plot those.
-        if 'pkt_size' in data.columns:
-             ax.plot(data['timestamp'], data['pkt_size'], label="Packet Size", color='blue', alpha=0.6)
-        
-        # Set title and labels
+        # Check for aggregated history data (packet_count)
+        if 'packet_count' in data.columns:
+            ax.plot(data['timestamp'], data['packet_count'], label="Packet Volume", color='blue', marker='o')
+            ax.set_title("Live Traffic Volume (Rolling Window)", fontsize=14)
+            ax.set_ylabel("Packets per Window", fontsize=10)
+            
+            # Print summary
+            last_count = data.iloc[-1]['packet_count'] if not data.empty else 0
+            print(f"\n[Monitor] Last Window Volume: {last_count} packets")
+
+        elif 'pkt_size' in data.columns:
+             # Fallback to per-packet size plot
+             ax.plot(data['timestamp'], data['pkt_size'], label="Packet Size", color='green', alpha=0.6)
+             ax.set_title("Live Traffic Monitor (Raw Packets)", fontsize=14)
+             ax.set_ylabel("Packet Size", fontsize=10)
+
+        # Set common labels
         ax.set_xlabel("Time", fontsize=10)
-        ax.set_ylabel("Packet Size / Volume", fontsize=10)
-        ax.set_title("Live Traffic Monitor", fontsize=14)
         ax.legend()
 
         # Format x-axis
-        if not data['timestamp'].empty:
+        if not data.empty:
              ax.xaxis.set_major_formatter(DateFormatter("%H:%M:%S"))
         plt.xticks(rotation=45)
         plt.tight_layout()
