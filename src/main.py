@@ -1,4 +1,5 @@
 # src/main.py
+import os
 import argparse
 import logging
 import time
@@ -6,10 +7,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 from src.capture.packet_sniffer import start_sniffing, get_and_clear_captured_data
 from src.detection.ml_detection import AnomalyDetector
-from src.filtering.ip_filter import check_and_filter_ip
 from src.visualize import visualize_data
-from src.utils.config import Config
-
+from src.utils.detection_log import log_detection
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -49,6 +48,13 @@ def main(sniff_time, calibration_time):
     logging.info("Starting monitoring phase...")
     
     try:
+        # Initialize Simulation Results File
+        results_path = "data/processed/simulation_results.csv"
+        os.makedirs(os.path.dirname(results_path), exist_ok=True)
+        if not os.path.exists(results_path):
+             with open(results_path, 'w') as f:
+                 f.write("timestamp,src_ip,is_attacker,predicted_anomaly,risk_level\n")
+
         while True:
             # Sniff a small batch
             start_sniffing(timeout=sniff_time)
@@ -63,7 +69,6 @@ def main(sniff_time, calibration_time):
             history_df = pd.concat([history_df, new_row], ignore_index=True)
             
             # Keep only last 60 seconds (approx)
-            # Since we sniff in windows, we can just keep last N records or filter by time
             cutoff_time = current_time - timedelta(seconds=60)
             history_df = history_df[history_df['timestamp'] > cutoff_time]
             
@@ -77,20 +82,71 @@ def main(sniff_time, calibration_time):
 
             # Detect anomalies
             try:
-                anomalous_ips = detector.detect_anomalies(batch_data)
+                # Now returns profiles: [{'src_ip': '...', 'risk_level': '...', ...}]
+                anomaly_profiles = detector.detect_anomalies(batch_data)
+                
+                # Extract simple list of IPs for quick lookup
+                anomalous_ips = {p['src_ip'] for p in anomaly_profiles}
+                
+                # --- Accuracy Metrics Recording ---
+                # Iterate over ALL unique IPs in the batch to record True/False Positives/Negatives
+                unique_ips = batch_data['src_ip'].unique()
+                with open(results_path, 'a') as f:
+                    for ip in unique_ips:
+                        # Ground Truth Assumption
+                        is_attacker = 1 if ip.startswith("192.168.1.") else 0
+                        
+                        # Prediction
+                        predicted = 1 if ip in anomalous_ips else 0
+                        
+                        # Risk (if anomalous)
+                        risk = "None"
+                        for p in anomaly_profiles:
+                             if p['src_ip'] == ip:
+                                  risk = p['risk_level']
+                                  break
+                        
+                        f.write(f"{current_time},{ip},{is_attacker},{predicted},{risk}\n")
+                # ----------------------------------
+
             except Exception as e:
                 logging.error(f"Error during anomaly detection: {e}")
-                anomalous_ips = []
+                anomaly_profiles = []
 
-            if anomalous_ips:
-                print(f"Anomalies detected: {anomalous_ips}")
-                logging.warning(f"Detected {len(anomalous_ips)} suspicious IPs.")
+            if anomaly_profiles:
+                logging.warning(f"Detected {len(anomaly_profiles)} suspicious IPs.")
                 
-                # Filter/Block IPs
-                for ip in anomalous_ips:
-                    # Calculate packet count for this IP in the current batch for reporting
-                    pkt_count = batch_data[batch_data['src_ip'] == ip].shape[0]
-                    check_and_filter_ip(ip, packet_count=pkt_count)
+                # Filter/Block IPs and Log Reason
+                for profile in anomaly_profiles:
+                    ip = profile['src_ip']
+                    
+                    # Extract features for this IP to find the reason
+                    # We need the grouped data or filter the original batch
+                    # This is slightly inefficient but clear.
+                    ip_data = batch_data[batch_data['src_ip'] == ip]
+                    
+                    # We need to re-extract features (or better, have detector return them).
+                    # Since detector doesn't return them, we use a public helper or just re-calculate locally if needed.
+                    # But actually `get_anomaly_reason` expects features. 
+                    # Let's assume we can get them.
+                    # Ideally `detect_anomalies` should return them. 
+                    # Since I updated `detect_anomalies` to NOT return them, I have to re-extract.
+                    # Warning: This calls the internal method _extract_features again. 
+                    # Ideally we refactor to avoid double extraction, but for now this is robust.
+                    ip_features_df = detector._extract_features(ip_data)
+                    
+                    if not ip_features_df.empty:
+                         # It's a dataframe with one row (indexed by src_ip)
+                         ip_features = ip_features_df.iloc[0]
+                         reason = detector.get_anomaly_reason(ip_features)
+                    else:
+                         reason = "Unknown"
+
+                    # Calculate packet count for this IP in the current batch
+                    pkt_count = ip_data.shape[0]
+                    
+                    # Log with full context
+                    log_detection(ip, pkt_count, detection_method="ML_IsolationForest", reason=reason, profile=profile)
 
             # Update Visualization with History
             try:

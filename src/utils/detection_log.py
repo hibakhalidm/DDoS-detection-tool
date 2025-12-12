@@ -21,7 +21,7 @@ class DetectionLogger:
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
         
-    def log_detection(self, src_ip, packet_rate, detection_method='Threshold'):
+    def log_detection(self, src_ip, packet_rate, detection_method='Threshold', reason=None, profile=None):
         """Log DDoS detection information in a structured format."""
         log_entry = {
             'timestamp': datetime.now().isoformat(),
@@ -31,14 +31,28 @@ class DetectionLogger:
             'message': 'DDoS Detected!'
         }
         
+        if reason:
+             log_entry['reason'] = reason
+        if profile:
+             log_entry['profile'] = profile
+        
         # Log as JSON string
         self.logger.info(json.dumps(log_entry))
-        print(json.dumps(log_entry))  # Print to console for immediate feedback
+        
+        # Enhanced console output
+        console_msg = f"[ALERT] IP: {src_ip} | Method: {detection_method}"
+        if reason:
+            console_msg += f" | Reason: {reason}"
+        if profile:
+             risk = profile.get('risk_level', 'UNKNOWN')
+             console_msg += f" | Risk: {risk}"
+             
+        print(console_msg)
 
 # Initialize the logger
 detection_logger = DetectionLogger()
 
 # Wrapper function for logging
-def log_detection(src_ip, packet_rate, detection_method='Threshold'):
-    detection_logger.log_detection(src_ip, packet_rate, detection_method)
+def log_detection(src_ip, packet_rate, detection_method='Threshold', reason=None, profile=None):
+    detection_logger.log_detection(src_ip, packet_rate, detection_method, reason, profile)
 

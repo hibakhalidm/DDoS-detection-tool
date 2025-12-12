@@ -2,7 +2,7 @@
 from collections import defaultdict
 from src.utils.detection_log import log_detection
 
-DEFAULT_THRESHOLD_RATE = 100
+DEFAULT_THRESHOLD_RATE = 50
 blacklist = set()
 ip_packet_counts = defaultdict(int)
 
