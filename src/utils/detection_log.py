@@ -6,7 +6,9 @@ from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
 # Set up a rotating file handler for logs
-log_file_path = "../logs/detection.log"
+# Ensure absolute path irrespective of where script is run from
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+log_file_path = os.path.join(PROJECT_ROOT, "logs", "detection.log")
 os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
 
 # Create a custom logger
