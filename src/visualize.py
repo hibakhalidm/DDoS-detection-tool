@@ -1,5 +1,7 @@
 # src/visualize.py
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter
 import os
@@ -62,7 +64,6 @@ def visualize_data(file_path="data/processed/anomaly_detected.csv",
 
         # Save the plot
         plt.savefig(save_path)
-        print(f"Plot saved to {save_path}")
         plt.close(fig) # Close the figure to free memory
 
     except Exception as e:

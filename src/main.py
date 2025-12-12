@@ -5,10 +5,11 @@ import logging
 import time
 import pandas as pd
 from datetime import datetime, timedelta
-from src.capture.packet_sniffer import start_sniffing, get_and_clear_captured_data
+from src.capture.packet_sniffer import start_sniffing_thread, get_and_clear_captured_data
 from src.detection.ml_detection import AnomalyDetector
 from src.visualize import visualize_data
 from src.utils.detection_log import log_detection
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -17,9 +18,10 @@ def setup_arg_parser():
     parser = argparse.ArgumentParser(description="Real-Time DDoS Detection System")
     parser.add_argument('--sniff_time', type=int, default=2, help='Duration of sniffing window in seconds')
     parser.add_argument('--calibration_time', type=int, default=10, help='Duration of calibration phase in seconds')
+    parser.add_argument('--interface', type=str, default=None, help="Network interface to sniff (e.g., 'Loopback Pseudo-Interface 1' or 'lo')")
     return parser
 
-def main(sniff_time, calibration_time):
+def main(sniff_time, calibration_time, interface=None):
     # Initialize Detector
     detector = AnomalyDetector()
     
@@ -27,10 +29,18 @@ def main(sniff_time, calibration_time):
     # Columns: timestamp, packet_count, anomalies_detected
     history_df = pd.DataFrame(columns=['timestamp', 'packet_count'])
     
+    # Start the Sniffer Thread
+    logging.info(f"Initializing Packet Sniffer on interface: {interface if interface else 'Default'}")
+    start_sniffing_thread(interface=interface)
+    
     # Phase 1: Calibration
     print(f"Calibrating baseline traffic ({calibration_time} seconds)...")
     logging.info("Starting calibration phase...")
-    start_sniffing(timeout=calibration_time)
+    
+    # Wait for calibration data to accumulate
+    # Note: Using sleep since the sniffer is running in background
+    time.sleep(calibration_time)
+    
     baseline_data = get_and_clear_captured_data()
     
     if baseline_data.empty:
@@ -56,10 +66,10 @@ def main(sniff_time, calibration_time):
                  f.write("timestamp,src_ip,is_attacker,predicted_anomaly,risk_level\n")
 
         while True:
-            # Sniff a small batch
-            start_sniffing(timeout=sniff_time)
+            # Wait for the window to pass
+            time.sleep(sniff_time)
             
-            # Get data
+            # Get data accumulated during the sleep
             batch_data = get_and_clear_captured_data()
             current_time = datetime.now()
             
@@ -122,17 +132,10 @@ def main(sniff_time, calibration_time):
                     
                     # Extract features for this IP to find the reason
                     # We need the grouped data or filter the original batch
-                    # This is slightly inefficient but clear.
                     ip_data = batch_data[batch_data['src_ip'] == ip]
                     
                     # We need to re-extract features (or better, have detector return them).
                     # Since detector doesn't return them, we use a public helper or just re-calculate locally if needed.
-                    # But actually `get_anomaly_reason` expects features. 
-                    # Let's assume we can get them.
-                    # Ideally `detect_anomalies` should return them. 
-                    # Since I updated `detect_anomalies` to NOT return them, I have to re-extract.
-                    # Warning: This calls the internal method _extract_features again. 
-                    # Ideally we refactor to avoid double extraction, but for now this is robust.
                     ip_features_df = detector._extract_features(ip_data)
                     
                     if not ip_features_df.empty:
@@ -162,4 +165,4 @@ if __name__ == "__main__":
     arg_parser = setup_arg_parser()
     args = arg_parser.parse_args()
     
-    main(sniff_time=args.sniff_time, calibration_time=args.calibration_time)
+    main(sniff_time=args.sniff_time, calibration_time=args.calibration_time, interface=args.interface)
